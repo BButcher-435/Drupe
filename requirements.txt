@@ -1,0 +1,5 @@
+streamlit==1.32.0
+spotipy==2.23.0
+pandas==2.2.1
+scikit-learn==1.4.1.post1
+python-dotenv==1.0.1
