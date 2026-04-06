@@ -106,4 +106,3 @@ def eq_hesapla(features: dict) -> dict:
 
 if __name__ == "__main__":
     model_egit()
-
