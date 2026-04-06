@@ -19,7 +19,7 @@ EQ_PROFILES = {
 
 # ---- EĞİTİM ----
 def model_egit():
-    df = pd.read_csv(r"C:\Users\meteh\OneDrive\Desktop\archive\songs.csv")
+    df = pd.read_csv(r"Dataset\songs.csv")
 
     genre_map = {
         "Rock": "Rock", "Electronic": "Electronic",

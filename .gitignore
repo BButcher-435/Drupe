@@ -14,3 +14,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 core/model.pkl
+# Veri setleri
+data/
+*.csv
