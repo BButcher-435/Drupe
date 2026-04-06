@@ -19,7 +19,7 @@ EQ_PROFILES = {
 
 # ---- EĞİTİM ----
 def model_egit():
-    df = pd.read_csv(r"Dataset\songs.csv")
+    df = pd.read_csv("DataSets/songs.csv")
 
     genre_map = {
         "Rock": "Rock", "Electronic": "Electronic",
@@ -53,7 +53,6 @@ def model_egit():
     pickle.dump(pipeline, open("core/model.pkl", "wb"))
     print("Model kaydedildi!")
 
-
 def eq_hesapla(features: dict) -> dict:
     model = pickle.load(open("core/model.pkl", "rb"))
 
@@ -77,42 +76,25 @@ def eq_hesapla(features: dict) -> dict:
     v  = features["valence"]
     d  = features["danceability"]
     i  = features["instrumentalness"]
-    l  = (features["loudness"] + 60) / 60 
     s  = features["speechiness"]
 
-    # 31 band EQ hesapla (ISO standart frekanslar)
+    # 15 band EQ (ISO standart frekanslar)
     bands = {
-        20:    round(-2 + e * 1.5 + d * 1.0, 2),               # sub bass alt
-        25:    round(-1 + e * 2.0 + d * 1.5, 2),               # sub bass
-        31:    round(e * 2.5 + d * 2.0 - ac * 1.0, 2),         # sub bass üst
-        40:    round(e * 3.0 + d * 2.5 - ac * 1.5, 2),         # bass alt
-        50:    round(e * 3.5 + d * 2.5 - ac * 1.5, 2),         # bass
-        63:    round(e * 4.0 + d * 3.0 - ac * 2.0, 2),         # bass üst
-        80:    round(e * 3.5 + d * 2.5 - ac * 1.5, 2),         # upper bass alt
-        100:   round(e * 3.0 + d * 2.0 - ac * 1.0, 2),         # upper bass
-        125:   round(e * 2.0 + d * 1.5 + ac * 0.5, 2),         # low mid alt
-        160:   round(e * 1.5 + ac * 1.0 + i * 1.0, 2),         # low mid
-        200:   round(ac * 2.0 + i * 1.5 - e * 0.5, 2),         # low mid üst
-        250:   round(ac * 2.5 + i * 2.0 - e * 1.0, 2),         # mid alt
-        315:   round(ac * 2.0 + i * 2.0 - s * 1.0, 2),         # mid
-        400:   round(ac * 1.5 + i * 1.5 - s * 1.5, 2),         # mid üst
-        500:   round(i * 2.0 - s * 2.0 + v * 0.5, 2),          # upper mid alt
-        630:   round(i * 1.5 - s * 1.5 + v * 1.0, 2),          # upper mid
-        800:   round(s * 1.0 + v * 1.5 - i * 0.5, 2),          # presence alt
-        1000:  round(s * 1.5 + v * 1.5 - i * 1.0, 2),          # presence
-        1250:  round(s * 2.0 + v * 2.0 - ac * 0.5, 2),         # presence üst
-        1600:  round(v * 2.0 + s * 1.5 - ac * 1.0, 2),         # upper presence
-        2000:  round(v * 2.5 + t * 1.0 - ac * 1.5, 2),         # treble alt
-        2500:  round(v * 2.5 + t * 1.5 - ac * 1.5, 2),         # treble
-        3150:  round(v * 2.0 + t * 2.0 - s * 1.0, 2),          # treble üst
-        4000:  round(e * 1.5 + v * 2.0 + t * 2.0, 2),          # high treble alt
-        5000:  round(e * 1.5 + v * 1.5 + t * 2.5, 2),          # high treble
-        6300:  round(e * 1.0 + v * 1.5 + t * 2.5 - s * 1.0, 2), # air alt
-        8000:  round(e * 1.0 + v * 1.0 + t * 3.0 - s * 1.5, 2), # air
-        10000: round(v * 1.5 + t * 2.5 - ac * 1.0 - s * 1.5, 2),# air üst
-        12500: round(v * 2.0 + t * 2.0 - ac * 1.5, 2),          # brilliance alt
-        16000: round(v * 2.0 + t * 1.5 - ac * 2.0, 2),          # brilliance
-        20000: round(v * 1.5 + t * 1.0 - ac * 2.5, 2),          # brilliance üst
+        25:    round(e * 2.0 + d * 1.5 - ac * 1.0, 2),            # sub bass
+        40:    round(e * 3.5 + d * 2.5 - ac * 1.5, 2),            # bass alt
+        63:    round(e * 4.0 + d * 3.0 - ac * 2.0, 2),            # bass
+        100:   round(e * 3.0 + d * 2.0 - ac * 1.0, 2),            # upper bass
+        160:   round(e * 1.5 + ac * 1.0 + i * 1.0, 2),            # low mid
+        250:   round(ac * 2.5 + i * 2.0 - e * 1.0, 2),            # mid alt
+        400:   round(ac * 1.5 + i * 1.5 - s * 1.5, 2),            # mid
+        630:   round(i * 1.5 - s * 1.5 + v * 1.0, 2),             # upper mid
+        1000:  round(s * 1.5 + v * 1.5 - i * 1.0, 2),             # presence
+        1600:  round(v * 2.0 + s * 1.5 - ac * 1.0, 2),            # upper presence
+        2500:  round(v * 2.5 + t * 1.5 - ac * 1.5, 2),            # treble
+        4000:  round(e * 1.5 + v * 2.0 + t * 2.0, 2),             # high treble
+        6300:  round(e * 1.0 + v * 1.5 + t * 2.5 - s * 1.0, 2),   # air alt
+        10000: round(v * 1.5 + t * 2.5 - ac * 1.0 - s * 1.5, 2),  # air
+        16000: round(v * 2.0 + t * 1.5 - ac * 2.0, 2),            # brilliance
     }
 
     bands = {freq: max(-12, min(12, val)) for freq, val in bands.items()}
@@ -124,3 +106,4 @@ def eq_hesapla(features: dict) -> dict:
 
 if __name__ == "__main__":
     model_egit()
+
