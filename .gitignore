@@ -13,3 +13,7 @@ __pycache__/
 # Mac/Windows Sistem Dosyaları
 .DS_Store
 Thumbs.db
+core/model.pkl
+# Veri setleri
+data/
+*.csv
