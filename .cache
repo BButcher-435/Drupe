@@ -1,1 +1,5 @@
+<<<<<<< Updated upstream
 
+=======
+{"access_token": "BQBma8jFvCNWjXFVvWg1xdbj3xGFvDIdLpO26HTS2rTVqiIUreDP7vi2C0GEjBxNglndsRdAT5W-5zjtGY6M_OFYcT-cfYvGdvTUaTF5phjw9wY5YHpJZRP4WbWFfSrIWXqu8WA6zDEd0XF9PlVqJW9cgNcj5l4AB-rPRpGeb7eCFv9EKQv_0PbozAR9NxA8VqDlPUrlfsiPS_UIUB_jLtHYon98ZoeMEZfOpgedOkBFrTg4yqhZbZ-v", "token_type": "Bearer", "expires_in": 3600, "refresh_token": "AQBt_fS4y7jvUY200EMTJDFjKFk2Y8NNdnwF2YZ5k04LYySKf21bIvlhbINpcjiMmE5m72g3lEr6OMGgBwAbyKTEbSCqioH4M6hF-oVBbcUiKAz03j8OgMbgGo23QN7nAuw", "scope": "user-read-currently-playing", "expires_at": 1776981549}
+>>>>>>> Stashed changes
