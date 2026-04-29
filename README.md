@@ -1,4 +1,4 @@
-# 🎧 EQUAI - Akıllı Spotify Equalizer
+# 🎧 EQUAI - Akıllı Equalizer
 
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit&logoColor=white)
