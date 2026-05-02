@@ -67,6 +67,7 @@ def eq_hesapla(features: dict) -> dict:
         features["speechiness"]
     ]]
 
+    # ML genre tahmin eder (artık gerçekten kullanılıyor)
     genre = model.predict(X)[0]
 
     # Kısayollar
@@ -78,23 +79,29 @@ def eq_hesapla(features: dict) -> dict:
     i  = features["instrumentalness"]
     s  = features["speechiness"]
 
-    # 15 band EQ (ISO standart frekanslar)
+    # Genre'a göre taban EQ
+    base = EQ_PROFILES.get(genre, {"bass": 0, "mid": 0, "treble": 0})
+    b = base["bass"]
+    m = base["mid"]
+    tr = base["treble"]
+
+    # Taban (genre) + ince ayar (şarkıya özel) = final EQ
     bands = {
-        25:    round(e * 2.0 + d * 1.5 - ac * 1.0, 2),            # sub bass
-        40:    round(e * 3.5 + d * 2.5 - ac * 1.5, 2),            # bass alt
-        63:    round(e * 4.0 + d * 3.0 - ac * 2.0, 2),            # bass
-        100:   round(e * 3.0 + d * 2.0 - ac * 1.0, 2),            # upper bass
-        160:   round(e * 1.5 + ac * 1.0 + i * 1.0, 2),            # low mid
-        250:   round(ac * 2.5 + i * 2.0 - e * 1.0, 2),            # mid alt
-        400:   round(ac * 1.5 + i * 1.5 - s * 1.5, 2),            # mid
-        630:   round(i * 1.5 - s * 1.5 + v * 1.0, 2),             # upper mid
-        1000:  round(s * 1.5 + v * 1.5 - i * 1.0, 2),             # presence
-        1600:  round(v * 2.0 + s * 1.5 - ac * 1.0, 2),            # upper presence
-        2500:  round(v * 2.5 + t * 1.5 - ac * 1.5, 2),            # treble
-        4000:  round(e * 1.5 + v * 2.0 + t * 2.0, 2),             # high treble
-        6300:  round(e * 1.0 + v * 1.5 + t * 2.5 - s * 1.0, 2),   # air alt
-        10000: round(v * 1.5 + t * 2.5 - ac * 1.0 - s * 1.5, 2),  # air
-        16000: round(v * 2.0 + t * 1.5 - ac * 2.0, 2),            # brilliance
+        25:    round(b * 0.5 + e * 2.0 + d * 1.5 - ac * 1.0, 2),           # sub bass
+        40:    round(b * 0.8 + e * 3.5 + d * 2.5 - ac * 1.5, 2),           # bass alt
+        63:    round(b * 1.0 + e * 4.0 + d * 3.0 - ac * 2.0, 2),           # bass
+        100:   round(b * 0.8 + e * 3.0 + d * 2.0 - ac * 1.0, 2),           # upper bass
+        160:   round(m * 0.5 + e * 1.5 + ac * 1.0 + i * 1.0, 2),           # low mid
+        250:   round(m * 0.8 + ac * 2.5 + i * 2.0 - e * 1.0, 2),           # mid alt
+        400:   round(m * 1.0 + ac * 1.5 + i * 1.5 - s * 1.5, 2),           # mid
+        630:   round(m * 0.8 + i * 1.5 - s * 1.5 + v * 1.0, 2),            # upper mid
+        1000:  round(m * 0.5 + s * 1.5 + v * 1.5 - i * 1.0, 2),            # presence
+        1600:  round(tr * 0.5 + v * 2.0 + s * 1.5 - ac * 1.0, 2),          # upper presence
+        2500:  round(tr * 0.8 + v * 2.5 + t * 1.5 - ac * 1.5, 2),          # treble
+        4000:  round(tr * 1.0 + e * 1.5 + v * 2.0 + t * 2.0, 2),           # high treble
+        6300:  round(tr * 0.8 + e * 1.0 + v * 1.5 + t * 2.5 - s * 1.0, 2), # air alt
+        10000: round(tr * 0.5 + v * 1.5 + t * 2.5 - ac * 1.0 - s * 1.5, 2),# air
+        16000: round(tr * 0.3 + v * 2.0 + t * 1.5 - ac * 2.0, 2),          # brilliance
     }
 
     bands = {freq: max(-12, min(12, val)) for freq, val in bands.items()}
@@ -103,6 +110,7 @@ def eq_hesapla(features: dict) -> dict:
         "genre": genre,
         "bands": bands
     }
+
 
 if __name__ == "__main__":
     model_egit()
