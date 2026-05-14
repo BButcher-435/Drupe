@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
-import pickle
+import joblib
 
 # ---- EQ PROFİLLERİ ----
 EQ_PROFILES = {
@@ -16,6 +16,15 @@ EQ_PROFILES = {
     "Classical":  {"bass": -1, "mid": 3,  "treble": 4},
     "Folk":       {"bass": 1,  "mid": 3,  "treble": 2},
 }
+
+# ---- MODEL TEK SEFERINDE YÜKLENIR ----
+_model = None
+
+def get_model():
+    global _model
+    if _model is None:
+        _model = joblib.load("core/model.pkl")
+    return _model
 
 # ---- EĞİTİM ----
 def model_egit():
@@ -42,7 +51,7 @@ def model_egit():
 
     pipeline = Pipeline([
         ("scaler", StandardScaler()),
-        ("model", RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1))
+        ("model", RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1))
     ])
 
     pipeline.fit(X_train, y_train)
@@ -50,11 +59,11 @@ def model_egit():
     tahmin = pipeline.predict(X_test)
     print(f"Accuracy: {accuracy_score(y_test, tahmin) * 100:.1f}%")
 
-    pickle.dump(pipeline, open("core/model.pkl", "wb"))
+    joblib.dump(pipeline, "core/model.pkl")
     print("Model kaydedildi!")
 
 def eq_hesapla(features: dict) -> dict:
-    model = pickle.load(open("core/model.pkl", "rb"))
+    model = get_model()  # artık her seferinde yüklenmiyor
 
     X = [[
         features["energy"],
@@ -67,10 +76,8 @@ def eq_hesapla(features: dict) -> dict:
         features["speechiness"]
     ]]
 
-    # ML genre tahmin eder (artık gerçekten kullanılıyor)
     genre = model.predict(X)[0]
 
-    # Kısayollar
     e  = features["energy"]
     ac = features["acousticness"]
     t  = (features["tempo"] - 60) / 140
@@ -79,29 +86,27 @@ def eq_hesapla(features: dict) -> dict:
     i  = features["instrumentalness"]
     s  = features["speechiness"]
 
-    # Genre'a göre taban EQ
     base = EQ_PROFILES.get(genre, {"bass": 0, "mid": 0, "treble": 0})
     b = base["bass"]
     m = base["mid"]
     tr = base["treble"]
 
-    # Taban (genre) + ince ayar (şarkıya özel) = final EQ
     bands = {
-        25:    round(b * 0.5 + e * 2.0 + d * 1.5 - ac * 1.0, 2),           # sub bass
-        40:    round(b * 0.8 + e * 3.5 + d * 2.5 - ac * 1.5, 2),           # bass alt
-        63:    round(b * 1.0 + e * 4.0 + d * 3.0 - ac * 2.0, 2),           # bass
-        100:   round(b * 0.8 + e * 3.0 + d * 2.0 - ac * 1.0, 2),           # upper bass
-        160:   round(m * 0.5 + e * 1.5 + ac * 1.0 + i * 1.0, 2),           # low mid
-        250:   round(m * 0.8 + ac * 2.5 + i * 2.0 - e * 1.0, 2),           # mid alt
-        400:   round(m * 1.0 + ac * 1.5 + i * 1.5 - s * 1.5, 2),           # mid
-        630:   round(m * 0.8 + i * 1.5 - s * 1.5 + v * 1.0, 2),            # upper mid
-        1000:  round(m * 0.5 + s * 1.5 + v * 1.5 - i * 1.0, 2),            # presence
-        1600:  round(tr * 0.5 + v * 2.0 + s * 1.5 - ac * 1.0, 2),          # upper presence
-        2500:  round(tr * 0.8 + v * 2.5 + t * 1.5 - ac * 1.5, 2),          # treble
-        4000:  round(tr * 1.0 + e * 1.5 + v * 2.0 + t * 2.0, 2),           # high treble
-        6300:  round(tr * 0.8 + e * 1.0 + v * 1.5 + t * 2.5 - s * 1.0, 2), # air alt
-        10000: round(tr * 0.5 + v * 1.5 + t * 2.5 - ac * 1.0 - s * 1.5, 2),# air
-        16000: round(tr * 0.3 + v * 2.0 + t * 1.5 - ac * 2.0, 2),          # brilliance
+        25:    round(b * 0.5 + e * 2.0 + d * 1.5 - ac * 1.0, 2),
+        40:    round(b * 0.8 + e * 3.5 + d * 2.5 - ac * 1.5, 2),
+        63:    round(b * 1.0 + e * 4.0 + d * 3.0 - ac * 2.0, 2),
+        100:   round(b * 0.8 + e * 3.0 + d * 2.0 - ac * 1.0, 2),
+        160:   round(m * 0.5 + e * 1.5 + ac * 1.0 + i * 1.0, 2),
+        250:   round(m * 0.8 + ac * 2.5 + i * 2.0 - e * 1.0, 2),
+        400:   round(m * 1.0 + ac * 1.5 + i * 1.5 - s * 1.5, 2),
+        630:   round(m * 0.8 + i * 1.5 - s * 1.5 + v * 1.0, 2),
+        1000:  round(m * 0.5 + s * 1.5 + v * 1.5 - i * 1.0, 2),
+        1600:  round(tr * 0.5 + v * 2.0 + s * 1.5 - ac * 1.0, 2),
+        2500:  round(tr * 0.8 + v * 2.5 + t * 1.5 - ac * 1.5, 2),
+        4000:  round(tr * 1.0 + e * 1.5 + v * 2.0 + t * 2.0, 2),
+        6300:  round(tr * 0.8 + e * 1.0 + v * 1.5 + t * 2.5 - s * 1.0, 2),
+        10000: round(tr * 0.5 + v * 1.5 + t * 2.5 - ac * 1.0 - s * 1.5, 2),
+        16000: round(tr * 0.3 + v * 2.0 + t * 1.5 - ac * 2.0, 2),
     }
 
     bands = {freq: max(-12, min(12, val)) for freq, val in bands.items()}
@@ -110,7 +115,6 @@ def eq_hesapla(features: dict) -> dict:
         "genre": genre,
         "bands": bands
     }
-
 
 if __name__ == "__main__":
     model_egit()
