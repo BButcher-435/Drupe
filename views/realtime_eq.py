@@ -9,7 +9,7 @@ import pandas as pd
 # ── MODÜLER MİMARİ İÇE AKTARIMLARI ──
 from core.audio_processor import get_audio_state, audio_worker, default_features, BANDS, CHUNK_SECONDS
 from core.eq_controller import update_apo_config
-from core.ml_engine import eq_hesapla  # ML Motorunu tekrar çağırıyoruz!
+from core.ml_engine import eq_hesapla
 
 @st.cache_resource
 def get_cached_audio_state() -> dict:
@@ -26,7 +26,6 @@ def render():
 
     state = get_cached_audio_state()
     
-    # Session State Başlangıçları
     if "eq_active" not in st.session_state:
         st.session_state.eq_active = False
     if "features" not in st.session_state:
@@ -61,7 +60,6 @@ def render():
         current_time = time.time()
         time_since_fetch = current_time - st.session_state.last_spotify_time
 
-        # 1. SPOTIFY OYNATICI (Rate-Limit Korumalı)
         try:
             if time_since_fetch >= 3.5:
                 scope = "user-read-currently-playing user-read-playback-state"
@@ -98,14 +96,12 @@ def render():
         except Exception:
             st.warning("Spotify bilgileri şu an çekilemiyor, ancak ses analizi devam ediyor...")
 
-        # 2. ARKA PLAN SES VERİSİNİ ÇEKME
         try:
             st.session_state.features = state["result_queue"].get_nowait()
         except queue.Empty:
             pass 
         f = st.session_state.features
 
-        # 3. YENİDEN AKTİF EDİLEN ML TAHMİNİ
         features_for_ml = {
             "energy": min(f['energy_rms'] * 5, 1.0),
             "acousticness": max(1.0 - (f['energy_rms'] * 5), 0.0), 
@@ -124,7 +120,6 @@ def render():
         except Exception as e:
             st.error(f"ML Motoru Hatası: {e}")
 
-        # 4. GELİŞMİŞ SES ANALİZİ DASHBOARD'U
         with st.expander("📊 Gelişmiş Sistem Sesi Analizi (Canlı Veri)", expanded=True):
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Tempo", f"{f['tempo']:.1f} BPM")

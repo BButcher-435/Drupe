@@ -34,3 +34,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+import os
+print("👉 EKRAN ÇIKTISI (CLIENT ID):", os.getenv("SPOTIPY_CLIENT_ID"))
