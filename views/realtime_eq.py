@@ -1,120 +1,112 @@
+import streamlit as st
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+import time
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
-import joblib
+import threading
+from core.ml_engine import eq_hesapla
+from core import librosa_engine # SENİN MOTORUN
 
-# ---- EQ PROFİLLERİ ----
-EQ_PROFILES = {
-    "Rock":       {"bass": 4,  "mid": -2, "treble": 3},
-    "Electronic": {"bass": 6,  "mid": -3, "treble": 2},
-    "Pop":        {"bass": 2,  "mid": 5,  "treble": 1},
-    "Hip-Hop":    {"bass": 5,  "mid": 1,  "treble": 0},
-    "Jazz":       {"bass": 0,  "mid": 4,  "treble": 3},
-    "Classical":  {"bass": -1, "mid": 3,  "treble": 4},
-    "Folk":       {"bass": 1,  "mid": 3,  "treble": 2},
-}
+def render():
+    st.title("🎛️ Real Time EQ")
+    st.markdown("Şu anda Spotify'da çalan şarkıyı dinliyor, Librosa ile analiz ediyor ve EQ ayarlarını anlık güncelliyor.")
 
-# ---- MODEL TEK SEFERINDE YÜKLENIR ----
-_model = None
+    # 1. MOTORU ARKA PLANDA BAŞLAT (Sadece bir kere çalışması için)
+    if "ses_motoru_aktif" not in st.session_state:
+        st.session_state.ses_motoru_aktif = True
+        motor_thread = threading.Thread(target=librosa_engine.start_engine, daemon=True)
+        motor_thread.start()
+        print("Streamlit: Ses Motoru Arka Planda Ateşlendi!")
 
-def get_model():
-    global _model
-    if _model is None:
-        _model = joblib.load("core/model.pkl")
-    return _model
+    # Session state başlat
+    if "eq_active" not in st.session_state:
+        st.session_state.eq_active = False
+    if "last_track_id" not in st.session_state:
+        st.session_state.last_track_id = None
 
-# ---- EĞİTİM ----
-def model_egit():
-    df = pd.read_csv("DataSets/songs.csv")
+    # Butonlar
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("▶️ Başlat", use_container_width=True):
+            st.session_state.eq_active = True
+            st.rerun()
+    with col2:
+        if st.button("⏹️ Durdur", use_container_width=True):
+            st.session_state.eq_active = False
+            st.rerun()
 
-    genre_map = {
-        "Rock": "Rock", "Electronic": "Electronic",
-        "Pop": "Pop", "Hip-Hop": "Hip-Hop", "R&B": "Hip-Hop",
-        "Jazz": "Jazz", "Blues": "Jazz",
-        "Classical": "Classical", "Folk": "Folk", "Country": "Folk",
-    }
-    df["genre"] = df["genre"].map(genre_map)
+    st.divider()
 
-    features = ["energy", "acousticness", "tempo", "valence",
-                "danceability", "instrumentalness", "loudness", "speechiness"]
-    df = df[features + ["genre"]].dropna()
+    if st.session_state.eq_active:
+        st.success("🟢 Dinamik EQ Aktif. Spotify dinleniyor...")
 
-    X = df[features]
-    y = df["genre"]
+        # Spotify API Bağlantısı (Kimlik doğrulaması tarayıcıda açılır)
+        sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="user-read-currently-playing"))
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+        try:
+            current_track = sp.current_user_playing_track()
 
-    pipeline = Pipeline([
-        ("scaler", StandardScaler()),
-        ("model", RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1))
-    ])
+            if current_track is not None and current_track.get('is_playing'):
+                track_name = current_track['item']['name']
+                artist_name = current_track['item']['artists'][0]['name']
+                track_id = current_track['item']['id']
+                img_url = current_track['item']['album']['images'][0]['url']
 
-    pipeline.fit(X_train, y_train)
+                audio_features = sp.audio_features(track_id)[0]
 
-    tahmin = pipeline.predict(X_test)
-    print(f"Accuracy: {accuracy_score(y_test, tahmin) * 100:.1f}%")
+                if audio_features:
+                    features_for_ml = {
+                        "energy": audio_features["energy"],
+                        "acousticness": audio_features["acousticness"],
+                        "tempo": audio_features["tempo"],
+                        "valence": audio_features["valence"],
+                        "danceability": audio_features["danceability"],
+                        "instrumentalness": audio_features["instrumentalness"],
+                        "loudness": audio_features["loudness"],
+                        "speechiness": audio_features["speechiness"]
+                    }
 
-    joblib.dump(pipeline, "core/model.pkl")
-    print("Model kaydedildi!")
+                    # YENİ ŞARKI GELDİYSE (SADECE O ZAMAN MOTORU GÜNCELLE)
+                    if track_id != st.session_state.last_track_id:
+                        result = eq_hesapla(features_for_ml)
+                        st.session_state.last_track_id = track_id
+                        st.session_state.last_result = result
+                        
+                        # APO'YA YAZMA İŞLEMİNİ SENİN MOTORUNA DEVREDİYORUZ
+                        librosa_engine.update_base_preset(result["bands"])
+                    else:
+                        result = st.session_state.last_result
 
-def eq_hesapla(features: dict) -> dict:
-    model = get_model()  # artık her seferinde yüklenmiyor
+                    # Şarkı Bilgilerini Ekrana Bas
+                    img_col, info_col = st.columns([1, 2])
+                    with img_col:
+                        st.image(img_url, use_column_width=True)
+                    with info_col:
+                        st.subheader(track_name)
+                        st.write(f"**Sanatçı:** {artist_name}")
+                        st.write(f"**ML Tür Tahmini:** {result['genre']}")
+                        st.write(f"**Tempo:** {audio_features['tempo']:.0f} BPM")
 
-    X = [[
-        features["energy"],
-        features["acousticness"],
-        features["tempo"],
-        features["valence"],
-        features["danceability"],
-        features["instrumentalness"],
-        features["loudness"],
-        features["speechiness"]
-    ]]
+                    st.divider()
 
-    genre = model.predict(X)[0]
+                    # EQ Grafiği (Arayüzde Base Preset Gösterilir)
+                    st.subheader("📊 Taban EQ Profili (Base Preset)")
+                    bands = result["bands"]
+                    df = pd.DataFrame({
+                        "Frekans (Hz)": [str(k) for k in bands.keys()],
+                        "dB": list(bands.values())
+                    })
+                    st.bar_chart(df.set_index("Frekans (Hz)"))
 
-    e  = features["energy"]
-    ac = features["acousticness"]
-    t  = (features["tempo"] - 60) / 140
-    v  = features["valence"]
-    d  = features["danceability"]
-    i  = features["instrumentalness"]
-    s  = features["speechiness"]
+            else:
+                st.info("Şu an Spotify'da müzik çalmıyor.")
 
-    base = EQ_PROFILES.get(genre, {"bass": 0, "mid": 0, "treble": 0})
-    b = base["bass"]
-    m = base["mid"]
-    tr = base["treble"]
+        except Exception as e:
+            st.error(f"Bağlantı veya yetkilendirme hatası: {e}")
 
-    bands = {
-        25:    round(b * 0.5 + e * 2.0 + d * 1.5 - ac * 1.0, 2),
-        40:    round(b * 0.8 + e * 3.5 + d * 2.5 - ac * 1.5, 2),
-        63:    round(b * 1.0 + e * 4.0 + d * 3.0 - ac * 2.0, 2),
-        100:   round(b * 0.8 + e * 3.0 + d * 2.0 - ac * 1.0, 2),
-        160:   round(m * 0.5 + e * 1.5 + ac * 1.0 + i * 1.0, 2),
-        250:   round(m * 0.8 + ac * 2.5 + i * 2.0 - e * 1.0, 2),
-        400:   round(m * 1.0 + ac * 1.5 + i * 1.5 - s * 1.5, 2),
-        630:   round(m * 0.8 + i * 1.5 - s * 1.5 + v * 1.0, 2),
-        1000:  round(m * 0.5 + s * 1.5 + v * 1.5 - i * 1.0, 2),
-        1600:  round(tr * 0.5 + v * 2.0 + s * 1.5 - ac * 1.0, 2),
-        2500:  round(tr * 0.8 + v * 2.5 + t * 1.5 - ac * 1.5, 2),
-        4000:  round(tr * 1.0 + e * 1.5 + v * 2.0 + t * 2.0, 2),
-        6300:  round(tr * 0.8 + e * 1.0 + v * 1.5 + t * 2.5 - s * 1.0, 2),
-        10000: round(tr * 0.5 + v * 1.5 + t * 2.5 - ac * 1.0 - s * 1.5, 2),
-        16000: round(tr * 0.3 + v * 2.0 + t * 1.5 - ac * 2.0, 2),
-    }
+        # Her 5 saniyede bir Spotify'ı tekrar kontrol et
+        time.sleep(5)
+        st.rerun()
 
-    bands = {freq: max(-12, min(12, val)) for freq, val in bands.items()}
-
-    return {
-        "genre": genre,
-        "bands": bands
-    }
-
-if __name__ == "__main__":
-    model_egit()
+    else:
+        st.warning("🔴 EQ Kapalı. Başlatmak için yukarıdaki butona tıklayın.")
