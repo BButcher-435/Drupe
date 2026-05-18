@@ -9,6 +9,7 @@ import pandas as pd
 # ── MODÜLER MİMARİ İÇE AKTARIMLARI ──
 from core.audio_processor import get_audio_state, audio_worker, default_features, BANDS, CHUNK_SECONDS
 from core.eq_controller import update_apo_config
+from core.ml_engine import eq_hesapla  # ML Motorunu tekrar çağırıyoruz!
 
 @st.cache_resource
 def get_cached_audio_state() -> dict:
@@ -21,7 +22,7 @@ def format_time(ms):
 
 def render():
     st.title("🎛️ Real Time Audio Analyzer & Player")
-    st.markdown("Sistem sesini modüler olarak analiz eder ve Spotify ile senkronize çalışır. (ML Tahmini modülü geçici olarak devre dışıdır).")
+    st.markdown("Sistem sesini modüler olarak analiz eder, Spotify ile senkronize çalışır ve ML tabanlı dinamik EQ uygular.")
 
     state = get_cached_audio_state()
     
@@ -104,11 +105,26 @@ def render():
             pass 
         f = st.session_state.features
 
-        # ML TAHMİNİ GEÇİCİ OLARAK KAPALI - RAM TASARRUFU İÇİN SADECE FLAT EQ GÖNDERİLİYOR
-        dummy_bands = {25: 0, 40: 0, 63: 0, 100: 0, 160: 0, 250: 0, 400: 0, 630: 0, 1000: 0, 1600: 0, 2500: 0, 4000: 0, 6300: 0, 10000: 0, 16000: 0}
-        update_apo_config(dummy_bands)
+        # 3. YENİDEN AKTİF EDİLEN ML TAHMİNİ
+        features_for_ml = {
+            "energy": min(f['energy_rms'] * 5, 1.0),
+            "acousticness": max(1.0 - (f['energy_rms'] * 5), 0.0), 
+            "tempo": f['tempo'],
+            "valence": 0.5, 
+            "danceability": f['danceability'],
+            "instrumentalness": 0.8 if f['zcr'] < 0.05 else 0.1, 
+            "loudness": f['loudness_a'],
+            "speechiness": 0.5 if f['zcr'] > 0.1 else 0.05 
+        }
+        
+        try:
+            result = eq_hesapla(features_for_ml)
+            st.success(f"🎸 ML Tahmini (Sistem Sesinden): **{result['genre']}**")
+            update_apo_config(result["bands"])
+        except Exception as e:
+            st.error(f"ML Motoru Hatası: {e}")
 
-        # 3. GELİŞMİŞ SES ANALİZİ DASHBOARD'U
+        # 4. GELİŞMİŞ SES ANALİZİ DASHBOARD'U
         with st.expander("📊 Gelişmiş Sistem Sesi Analizi (Canlı Veri)", expanded=True):
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Tempo", f"{f['tempo']:.1f} BPM")
@@ -116,7 +132,6 @@ def render():
             m3.metric("A-Weighted Loudness", f"{f['loudness_a']:.2f} dB")
             m4.metric("Danceability", f"{f['danceability']:.3f}")
 
-            # --- 15 BANT GÜÇ DAĞILIMI ---
             st.subheader("Bant Güç Dağılımı")
             band_df = pd.DataFrame({
                 "Band": [label for _, label, _, _ in BANDS],
@@ -124,7 +139,6 @@ def render():
             }).set_index("Band")
             st.bar_chart(band_df, use_container_width=True, height=200)
 
-            # --- YENİ EKLENEN KISIM: MFCC GRAFİĞİ ---
             st.subheader("MFCC (Mel-Frequency Cepstral Coefficients)")
             mfcc_keys = [f"mfcc_{i+1}" for i in range(20)]
             mfcc_values = [f.get(key, 0.0) for key in mfcc_keys]
@@ -134,9 +148,7 @@ def render():
                 "Value": mfcc_values,
             }).set_index("Coefficient")
             
-            # MFCC genelde negatif ve pozitif değerler içerdiği için bar chart çok uygundur
             st.bar_chart(mfcc_df, use_container_width=True, height=200)
-            # ----------------------------------------
 
         time.sleep(CHUNK_SECONDS)
         st.rerun()
