@@ -43,7 +43,7 @@ EquAI, modülerliği ve sürdürülebilirliği sağlamak için katmanlı bir mim
 ```bash
 git clone [https://github.com/BButcher-435/Drupe.git](https://github.com/BButcher-435/Drupe.git)
 cd Drupe
-python -m venv venv
+python -3.11 -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
 streamlit run app.py
