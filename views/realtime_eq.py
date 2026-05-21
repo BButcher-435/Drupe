@@ -32,6 +32,9 @@ def render():
         st.session_state.eq_active = False
     if "features" not in st.session_state:
         st.session_state.features = default_features()
+    if "last_eq_state" not in st.session_state:
+        st.session_state.last_eq_state = {freq: 0.0 for freq in librosa_engine.FREQUENCIES}
+        st.session_state.features = default_features()
     if "last_spotify_time" not in st.session_state:
         st.session_state.last_spotify_time = 0
         st.session_state.spotify_data = None
