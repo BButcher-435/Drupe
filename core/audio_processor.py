@@ -1,3 +1,20 @@
+import os
+import sys
+
+# 1. cffi ve ctypes C-Motoru için kesin PATH zorlaması (ole32 Hatasını Çözen Kısım)
+os.environ["PATH"] = r"C:\Windows\System32;" + os.environ.get("PATH", "")
+
+# 2. Python 3.8 ve üzeri için DLL kuralı
+if os.name == 'nt' and sys.version_info >= (3, 8):
+    try:
+        os.add_dll_directory(r"C:\Windows\System32")
+    except Exception:
+        pass
+
+# Gereksiz sarı uyarıları sustur
+import warnings
+warnings.filterwarnings("ignore")
+
 import numpy as np
 import soundcard as sc
 import librosa
