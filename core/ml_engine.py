@@ -17,7 +17,7 @@ EQ_PROFILES = {
     "Folk":       {"bass": 1,  "mid": 3,  "treble": 2},
 }
 
-# ---- MODEL TEK SEFERİNDE YÜKLENİR (RAM DOSTU) ----
+# ---- MODEL TEK SEFERINDE YÜKLENIR ----
 _model = None
 
 def get_model():
@@ -60,10 +60,10 @@ def model_egit():
     print(f"Accuracy: {accuracy_score(y_test, tahmin) * 100:.1f}%")
 
     joblib.dump(pipeline, "core/model.pkl")
-    print("Model başarıyla kaydedildi (joblib)!")
+    print("Model kaydedildi!")
 
 def eq_hesapla(features: dict) -> dict:
-    model = get_model()  # Artık her seferinde yüklenmiyor, RAM şişmiyor!
+    model = get_model()  # artık her seferinde yüklenmiyor
 
     X = [[
         features["energy"],
