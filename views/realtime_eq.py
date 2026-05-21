@@ -6,10 +6,12 @@ import threading
 import queue
 import pandas as pd
 
+
 # ── MODÜLER MİMARİ İÇE AKTARIMLARI ──
 from core.audio_processor import get_audio_state, audio_worker, default_features, BANDS, CHUNK_SECONDS
 from core.eq_controller import update_apo_config
 from core.ml_engine import eq_hesapla
+from core import librosa_engine
 
 @st.cache_resource
 def get_cached_audio_state() -> dict:
@@ -116,7 +118,24 @@ def render():
         try:
             result = eq_hesapla(features_for_ml)
             st.success(f"🎸 ML Tahmini (Sistem Sesinden): **{result['genre']}**")
-            update_apo_config(result["bands"])
+            
+            # --- YENİ BEYİN ENTEGRASYONU ---
+            base_eq_bands = result["bands"]
+            anlik_ses = {
+                "rms": f.get("energy_rms", 0.0),
+                "zcr": f.get("zcr", 0.0),
+                "centroid": f.get("spectral_centroid", 0.0),
+                "flux": f.get("spectral_flux", 0.0)
+            }
+            
+            hedef_eq = librosa_engine.apply_librosa_tweaks(base_eq_bands, anlik_ses)
+            smoothed_eq = librosa_engine.apply_smoothing(st.session_state.last_eq_state, hedef_eq)
+            st.session_state.last_eq_state = smoothed_eq.copy()
+            
+            preamp_val = librosa_engine.calculate_preamp(smoothed_eq)
+            update_apo_config(smoothed_eq, preamp_val)
+            # ---------------------------------
+
         except Exception as e:
             st.error(f"ML Motoru Hatası: {e}")
 
