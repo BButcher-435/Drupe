@@ -15,5 +15,5 @@ __pycache__/
 Thumbs.db
 core/model.pkl
 # Veri setleri
-data/
+DataSets/
 *.csv
