@@ -21,6 +21,8 @@ import librosa
 import threading
 import queue
 import pythoncom
+import time
+from .eq_controller import update_eq_from_audio_features
 
 # ─────────────────────────────────────────────────────────────────
 # SES ANALİZİ SABİTLERİ
@@ -54,6 +56,10 @@ def get_audio_state() -> dict:
         "ring_lock":    threading.Lock(),
         "ema":          {},
         "worker":       None,
+        "chunk_buffer": [],
+        "period_start_time": time.time(),
+        "aggregated_data": [],
+        "agg_lock": threading.Lock(),
     }
 
 def _ema(store: dict, key: str, value: float) -> float:
@@ -107,6 +113,33 @@ def extract_features(y: np.ndarray, ema_store: dict) -> dict:
 
     return {"tempo": tempo, "energy_rms": energy_rms, "loudness_a": loudness_a, "danceability": danceability, "zcr": zcr, "spectral_flux": flux, "spectral_centroid": spectral_centroid, "spectral_rolloff": spectral_rolloff, **band_out, **mfcc_dict}
 
+def average_20_features(state: dict, feats: dict) -> dict:
+    with state["agg_lock"]:
+        state["chunk_buffer"].append(feats)
+        current_time = time.time()
+        elapsed = current_time - state["period_start_time"]
+
+        if elapsed >= 20.0:
+            avg_feats = None
+            if state["chunk_buffer"]:
+                avg_feats = {}
+                feature_keys = state["chunk_buffer"][0].keys()
+
+                for key in feature_keys:
+                    values = [chunk[key] for chunk in state["chunk_buffer"]]
+                    avg_feats[key] = float(np.mean(values))
+
+                avg_feats["period_timestamp"] = current_time
+                avg_feats["chunk_count"] = len(state["chunk_buffer"])
+
+                state["aggregated_data"].append(avg_feats)
+
+            state["chunk_buffer"] = []
+            state["period_start_time"] = current_time
+            return avg_feats
+
+    return None
+
 def audio_worker(state: dict) -> None:
     pythoncom.CoInitialize()
     rq, stop, lock, ema_st = state["result_queue"], state["stop_event"], state["ring_lock"], state["ema"]
@@ -122,6 +155,9 @@ def audio_worker(state: dict) -> None:
                     state["ring_buffer"][-len(mono):] = mono
                     y_snap = state["ring_buffer"].copy()
                 feats = extract_features(y_snap, ema_st)
+                avg_result = average_20_features(state, feats)
+                if avg_result is not None:
+                    update_eq_from_audio_features(avg_result)
                 if rq.full():
                     try: rq.get_nowait()
                     except queue.Empty: pass

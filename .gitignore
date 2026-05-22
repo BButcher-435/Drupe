@@ -5,6 +5,7 @@
 # Sanal Ortam
 venv/
 env/
+.venv
 
 # Python Önbellek Dosyaları
 __pycache__/
