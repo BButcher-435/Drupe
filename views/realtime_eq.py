@@ -5,6 +5,7 @@ import time
 import threading
 import queue
 import pandas as pd
+import requests  # YENİ KURTARICIMIZ: İnternetten veri çekmek için
 
 # ── MODÜLER MİMARİ İÇE AKTARIMLARI ──
 from core.audio_processor import get_audio_state, audio_worker, default_features, BANDS, CHUNK_SECONDS
@@ -20,12 +21,31 @@ def format_time(ms):
     minutes = int((ms / (1000 * 60)) % 60)
     return f"{minutes}:{seconds:02d}"
 
+def classify_spotify_genres(genres_list):
+    if not genres_list:
+        return None
+    genres_str = " ".join(genres_list).lower()
+    
+    if any(keyword in genres_str for keyword in ["metal", "rock", "grunge", "punk", "anatolian"]): return "Rock"
+    elif any(keyword in genres_str for keyword in ["hip hop", "rap", "trap", "drill"]): return "Hip-Hop"
+    elif any(keyword in genres_str for keyword in ["pop", "dance", "r&b", "soul"]): return "Pop"
+    elif any(keyword in genres_str for keyword in ["edm", "techno", "house", "electro", "dubstep"]): return "Electronic"
+    elif any(keyword in genres_str for keyword in ["jazz", "blues"]): return "Jazz"
+    elif any(keyword in genres_str for keyword in ["classical", "orchestra", "piano"]): return "Classical"
+    elif any(keyword in genres_str for keyword in ["folk", "country", "acoustic", "indie"]): return "Folk"
+    return None
+
 def render():
     st.title("🎛️ Real Time Audio Analyzer & Player")
-    st.markdown("Sistem sesini modüler olarak analiz eder, Spotify ile senkronize çalışır ve ML tabanlı dinamik EQ uygular.")
+    st.markdown("Sistem sesini analiz eder ve **ML + Hibrit Veritabanı** ile dinamik EQ uygular.")
 
     state = get_cached_audio_state()
     
+    if "current_track_id" not in st.session_state:
+        st.session_state.current_track_id = None
+        st.session_state.spotify_macro_genre = None
+        st.session_state.raw_genres_debug = "Bekleniyor..."
+        
     if "eq_active" not in st.session_state:
         st.session_state.eq_active = False
     if "features" not in st.session_state:
@@ -76,6 +96,48 @@ def render():
             if playback is not None and playback.get('is_playing'):
                 item = playback['item']
                 duration_ms = item['duration_ms']
+                track_id = item['id']
+                
+                if st.session_state.current_track_id != track_id:
+                    try:
+                        if 'sp' not in locals():
+                            scope = "user-read-currently-playing user-read-playback-state"
+                            sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope))
+                            
+                        artist_id = item['artists'][0].get('id')
+                        artist_name = item['artists'][0].get('name')
+                        
+                        raw_genres = []
+                        debug_log = f"İsim: '{artist_name}'"
+                        
+                        # 1. ADIM: Spotify'a sor
+                        if artist_id:
+                            artist_info = sp.artist(artist_id)
+                            raw_genres = artist_info.get('genres', [])
+                            debug_log += f" | Spotify: {raw_genres}"
+                        
+                        # 2. ADIM (ÇÖZÜM): Spotify vermezse Apple/iTunes veritabanından SÖKE SÖKE AL!
+                        if not raw_genres and artist_name:
+                            try:
+                                clean_name = artist_name.split("-")[0].split("(")[0].strip()
+                                itunes_url = f"https://itunes.apple.com/search?term={clean_name}&entity=musicArtist&limit=1"
+                                response = requests.get(itunes_url, timeout=3).json()
+                                
+                                if response['resultCount'] > 0:
+                                    apple_genre = response['results'][0].get('primaryGenreName', '')
+                                    raw_genres = [apple_genre.lower()]
+                                    debug_log += f" | Apple/iTunes Kurtardı: {raw_genres}"
+                                else:
+                                    debug_log += " | Apple da bulamadı."
+                            except Exception as e:
+                                debug_log += f" | Apple Bağlantı Hatası."
+                        
+                        st.session_state.raw_genres_debug = debug_log
+                        st.session_state.spotify_macro_genre = classify_spotify_genres(raw_genres)
+                        
+                        st.session_state.current_track_id = track_id
+                    except Exception as inner_e:
+                        st.session_state.raw_genres_debug = f"API Hatası: {inner_e}"
                 
                 calculated_progress = st.session_state.base_progress_ms + int(time_since_fetch * 1000)
                 progress_ms = min(calculated_progress, duration_ms)
@@ -114,8 +176,11 @@ def render():
         }
         
         try:
-            result = eq_hesapla(features_for_ml)
-            st.success(f"🎸 ML Tahmini (Sistem Sesinden): **{result['genre']}**")
+            result = eq_hesapla(features_for_ml, st.session_state.spotify_macro_genre)
+            
+            st.success(f"🤖 ML: **{result['ml_prediction']}** | 🎧 Veritabanı: **{st.session_state.spotify_macro_genre or 'Belirsiz'}** | 🎛️ Uygulanan: **{result['genre']}**")
+            st.caption(f"🔍 *Sistem Log:* `{st.session_state.raw_genres_debug}`")
+            
             update_apo_config(result["bands"])
         except Exception as e:
             st.error(f"ML Motoru Hatası: {e}")

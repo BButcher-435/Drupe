@@ -62,8 +62,9 @@ def model_egit():
     joblib.dump(pipeline, "core/model.pkl")
     print("Model başarıyla kaydedildi (joblib)!")
 
-def eq_hesapla(features: dict) -> dict:
-    model = get_model()  # Artık her seferinde yüklenmiyor, RAM şişmiyor!
+# Fonksiyona "spotify_genre" adında opsiyonel bir parametre ekliyoruz
+def eq_hesapla(features: dict, spotify_genre: str = None) -> dict:
+    model = get_model()  # artık her seferinde yüklenmiyor
 
     X = [[
         features["energy"],
@@ -76,7 +77,11 @@ def eq_hesapla(features: dict) -> dict:
         features["speechiness"]
     ]]
 
-    genre = model.predict(X)[0]
+    # Modelin sadece sese bakarak yaptığı saf tahmin
+    ml_genre = model.predict(X)[0]
+
+    # KOPYA KAĞIDI MANTIĞI: Spotify'dan tür geldiyse onu, gelmediyse ML'in tahminini kullan
+    final_genre = spotify_genre if spotify_genre else ml_genre
 
     e  = features["energy"]
     ac = features["acousticness"]
@@ -86,7 +91,8 @@ def eq_hesapla(features: dict) -> dict:
     i  = features["instrumentalness"]
     s  = features["speechiness"]
 
-    base = EQ_PROFILES.get(genre, {"bass": 0, "mid": 0, "treble": 0})
+    # Profil seçerken artık 'final_genre' kullanıyoruz
+    base = EQ_PROFILES.get(final_genre, {"bass": 0, "mid": 0, "treble": 0})
     b = base["bass"]
     m = base["mid"]
     tr = base["treble"]
@@ -111,10 +117,9 @@ def eq_hesapla(features: dict) -> dict:
 
     bands = {freq: max(-12, min(12, val)) for freq, val in bands.items()}
 
+    # Arayüzde iki tahmini de görebilmek için sonucu güncelledik
     return {
-        "genre": genre,
+        "ml_prediction": ml_genre, 
+        "genre": final_genre,
         "bands": bands
     }
-
-if __name__ == "__main__":
-    model_egit()
