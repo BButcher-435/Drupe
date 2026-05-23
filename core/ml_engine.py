@@ -2,11 +2,10 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 import joblib
+import numpy as np
 
-# ---- EQ PROFİLLERİ ----
 EQ_PROFILES = {
     "Rock":       {"bass": 4,  "mid": -2, "treble": 3},
     "Electronic": {"bass": 6,  "mid": -3, "treble": 2},
@@ -17,16 +16,22 @@ EQ_PROFILES = {
     "Folk":       {"bass": 1,  "mid": 3,  "treble": 2},
 }
 
-# ---- MODEL TEK SEFERINDE YÜKLENIR ----
+FEATURES = ["energy", "acousticness", "tempo", "valence",
+            "danceability", "instrumentalness", "loudness",
+            "speechiness", "liveness"]
+
 _model = None
+_label_encoder = None
+_scaler = None
 
 def get_model():
-    global _model
+    global _model, _label_encoder, _scaler
     if _model is None:
         _model = joblib.load("core/model.pkl")
-    return _model
+        _label_encoder = joblib.load("core/label_encoder.pkl")
+        _scaler = joblib.load("core/scaler.pkl")
+    return _model, _label_encoder, _scaler
 
-# ---- EĞİTİM ----
 def model_egit():
     df = pd.read_csv("DataSets/songs.csv")
 
@@ -37,35 +42,47 @@ def model_egit():
         "Classical": "Classical", "Folk": "Folk", "Country": "Folk",
     }
     df["genre"] = df["genre"].map(genre_map)
+    df = df[FEATURES + ["genre"]].dropna()
 
-    features = ["energy", "acousticness", "tempo", "valence",
-                "danceability", "instrumentalness", "loudness", "speechiness"]
-    df = df[features + ["genre"]].dropna()
-
-    X = df[features]
+    X = df[FEATURES]
     y = df["genre"]
 
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+        X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
     )
 
-    pipeline = Pipeline([
-        ("scaler", StandardScaler()),
-        ("model", RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1))
-    ])
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
-    pipeline.fit(X_train, y_train)
+    model = RandomForestClassifier(
+        n_estimators=200,
+        random_state=42,
+        n_jobs=-1
+    )
 
-    tahmin = pipeline.predict(X_test)
+    model.fit(X_train_scaled, y_train)
+
+    tahmin = model.predict(X_test_scaled)
     print(f"Accuracy: {accuracy_score(y_test, tahmin) * 100:.1f}%")
 
-    joblib.dump(pipeline, "core/model.pkl")
+    # Feature importance göster
+    importances = model.feature_importances_
+    for feat, imp in sorted(zip(FEATURES, importances), key=lambda x: -x[1]):
+        print(f"  {feat}: {imp:.3f}")
+
+    joblib.dump(scaler, "core/scaler.pkl")
+    joblib.dump(model, "core/model.pkl")
+    joblib.dump(le, "core/label_encoder.pkl")
     print("Model kaydedildi!")
 
 def eq_hesapla(features: dict) -> dict:
-    model = get_model()  # artık her seferinde yüklenmiyor
+    model, le, scaler = get_model()
 
-    X = [[
+    X = np.array([[
         features["energy"],
         features["acousticness"],
         features["tempo"],
@@ -73,10 +90,13 @@ def eq_hesapla(features: dict) -> dict:
         features["danceability"],
         features["instrumentalness"],
         features["loudness"],
-        features["speechiness"]
-    ]]
+        features["speechiness"],
+        features.get("liveness", 0.1),
+    ]])
 
-    genre = model.predict(X)[0]
+    X_scaled = scaler.transform(X)
+    genre_encoded = model.predict(X_scaled)[0]
+    genre = le.inverse_transform([genre_encoded])[0]
 
     e  = features["energy"]
     ac = features["acousticness"]

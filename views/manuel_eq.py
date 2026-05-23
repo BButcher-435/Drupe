@@ -80,4 +80,6 @@ def render():
             if new_preset_name.strip() == "":
                 st.error("Lütfen bir isim girin!")
             else:
-                db_manager.add_custom_preset
+                db_manager.add_custom_preset(new_preset_name.strip(), new_bands)
+                st.success(f"'{new_preset_name}' profili kaydedildi!")
+                st.rerun()

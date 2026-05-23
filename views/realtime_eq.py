@@ -6,8 +6,6 @@ import threading
 import queue
 import pandas as pd
 
-
-# ── MODÜLER MİMARİ İÇE AKTARIMLARI ──
 from core.audio_processor import get_audio_state, audio_worker, default_features, BANDS, CHUNK_SECONDS
 from core.eq_controller import update_apo_config
 from core.ml_engine import eq_hesapla
@@ -39,6 +37,10 @@ def render():
         st.session_state.last_spotify_time = 0
         st.session_state.spotify_data = None
         st.session_state.base_progress_ms = 0
+    if "spotify_audio_features" not in st.session_state:  # ← YENİ
+        st.session_state.spotify_audio_features = None
+    if "last_track_id" not in st.session_state:           # ← YENİ
+        st.session_state.last_track_id = None
 
     col1, col2 = st.columns(2)
     with col1:
@@ -74,6 +76,16 @@ def render():
                 st.session_state.spotify_data = playback
                 if playback and playback.get('is_playing'):
                     st.session_state.base_progress_ms = playback['progress_ms']
+                    
+                    # ── YENİ: Şarkı değişince audio features çek ──
+                    track_id = playback['item']['id']
+                    if track_id != st.session_state.last_track_id:
+                        audio_features = sp.audio_features(track_id)[0]
+                        if audio_features:
+                            st.session_state.spotify_audio_features = audio_features
+                            st.session_state.last_track_id = track_id
+                    # ────────────────────────────────────────────────
+                    
                 st.session_state.last_spotify_time = current_time
             else:
                 playback = st.session_state.spotify_data
@@ -91,7 +103,6 @@ def render():
                 with info_col:
                     st.subheader(item['name'])
                     st.caption(f"🎤 **Sanatçı:** {item['artists'][0]['name']}")
-                    
                     st.progress(min(progress_ms / duration_ms, 1.0))
                     time_col1, time_col2 = st.columns(2)
                     time_col1.caption(f"▶ Çalınan: {format_time(progress_ms)}")
@@ -107,28 +118,51 @@ def render():
             pass 
         f = st.session_state.features
 
-        features_for_ml = {
-            "energy": min(f['energy_rms'] * 5, 1.0),
-            "acousticness": max(1.0 - (f['energy_rms'] * 5), 0.0), 
-            "tempo": f['tempo'],
-            "valence": 0.5, 
-            "danceability": f['danceability'],
-            "instrumentalness": 0.8 if f['zcr'] < 0.05 else 0.1, 
-            "loudness": f['loudness_a'],
-            "speechiness": 0.5 if f['zcr'] > 0.1 else 0.05 
-        }
+        # ── YENİ: Hibrit features (Spotify gerçek + Librosa anlık) ──
+        spotify_af = st.session_state.spotify_audio_features
+        if spotify_af:
+            features_for_ml = {
+                # Spotify'dan gerçek değerler
+                "valence":          spotify_af["valence"],
+                "acousticness":     spotify_af["acousticness"],
+                "speechiness":      spotify_af["speechiness"],
+                "instrumentalness": spotify_af["instrumentalness"],
+                # Librosa'dan anlık değerler
+                "energy":       min(f['energy_rms'] * 5, 1.0),
+                "tempo":        f['tempo'] if f['tempo'] > 0 else spotify_af["tempo"],
+                "danceability": f['danceability'] if f['danceability'] > 0 else spotify_af["danceability"],
+                "loudness":     f['loudness_a'],
+            }
+        else:
+            # Spotify henüz yüklenmediyse eski yöntemi kullan
+            features_for_ml = {
+                "energy":           min(f['energy_rms'] * 5, 1.0),
+                "acousticness":     max(1.0 - (f['energy_rms'] * 5), 0.0),
+                "tempo":            f['tempo'],
+                "valence":          0.5,
+                "danceability":     f['danceability'],
+                "instrumentalness": 0.8 if f['zcr'] < 0.05 else 0.1,
+                "loudness":         f['loudness_a'],
+                "speechiness":      0.5 if f['zcr'] > 0.1 else 0.05
+            }
+        # ────────────────────────────────────────────────────────────
         
         try:
             result = eq_hesapla(features_for_ml)
-            st.success(f"🎸 ML Tahmini (Sistem Sesinden): **{result['genre']}**")
             
-            # --- YENİ BEYİN ENTEGRASYONU ---
+            # ── YENİ: Spotify'dan genre varsa göster ──
+            spotify_genre_info = ""
+            if spotify_af:
+                spotify_genre_info = " (Spotify + Librosa Hibrit)"
+            st.success(f"🎸 ML Tahmini{spotify_genre_info}: **{result['genre']}**")
+            # ────────────────────────────────────────────
+
             base_eq_bands = result["bands"]
             anlik_ses = {
-                "rms": f.get("energy_rms", 0.0),
-                "zcr": f.get("zcr", 0.0),
+                "rms":      f.get("energy_rms", 0.0),
+                "zcr":      f.get("zcr", 0.0),
                 "centroid": f.get("spectral_centroid", 0.0),
-                "flux": f.get("spectral_flux", 0.0)
+                "flux":     f.get("spectral_flux", 0.0)
             }
             
             hedef_eq = librosa_engine.apply_librosa_tweaks(base_eq_bands, anlik_ses)
@@ -137,7 +171,6 @@ def render():
             
             preamp_val = librosa_engine.calculate_preamp(smoothed_eq)
             update_apo_config(smoothed_eq, preamp_val)
-            # ---------------------------------
 
         except Exception as e:
             st.error(f"ML Motoru Hatası: {e}")
@@ -149,6 +182,16 @@ def render():
             m3.metric("A-Weighted Loudness", f"{f['loudness_a']:.2f} dB")
             m4.metric("Danceability", f"{f['danceability']:.3f}")
 
+            # ── YENİ: Spotify audio features göster ──
+            if spotify_af:
+                st.subheader("🎵 Spotify Audio Features (ML Girdileri)")
+                s1, s2, s3, s4 = st.columns(4)
+                s1.metric("Valence", f"{spotify_af['valence']:.2f}")
+                s2.metric("Acousticness", f"{spotify_af['acousticness']:.2f}")
+                s3.metric("Speechiness", f"{spotify_af['speechiness']:.2f}")
+                s4.metric("Instrumentalness", f"{spotify_af['instrumentalness']:.2f}")
+            # ──────────────────────────────────────────
+
             st.subheader("Bant Güç Dağılımı")
             band_df = pd.DataFrame({
                 "Band": [label for _, label, _, _ in BANDS],
@@ -159,12 +202,10 @@ def render():
             st.subheader("MFCC (Mel-Frequency Cepstral Coefficients)")
             mfcc_keys = [f"mfcc_{i+1}" for i in range(20)]
             mfcc_values = [f.get(key, 0.0) for key in mfcc_keys]
-            
             mfcc_df = pd.DataFrame({
                 "Coefficient": [f"C{i+1}" for i in range(20)],
                 "Value": mfcc_values,
             }).set_index("Coefficient")
-            
             st.bar_chart(mfcc_df, use_container_width=True, height=200)
 
         time.sleep(CHUNK_SECONDS)
