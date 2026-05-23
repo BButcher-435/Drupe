@@ -5,12 +5,12 @@ import time
 import threading
 import queue
 import pandas as pd
-import requests  # YENİ KURTARICIMIZ: İnternetten veri çekmek için
+import requests # BİZİM KURTARICIMIZ
 
-# ── MODÜLER MİMARİ İÇE AKTARIMLARI ──
 from core.audio_processor import get_audio_state, audio_worker, default_features, BANDS, CHUNK_SECONDS
 from core.eq_controller import update_apo_config
 from core.ml_engine import eq_hesapla
+from core import librosa_engine
 
 @st.cache_resource
 def get_cached_audio_state() -> dict:
@@ -21,6 +21,7 @@ def format_time(ms):
     minutes = int((ms / (1000 * 60)) % 60)
     return f"{minutes}:{seconds:02d}"
 
+# --- BİZİM ÇEVİRİCİ SÖZLÜĞÜMÜZ ---
 def classify_spotify_genres(genres_list):
     if not genres_list:
         return None
@@ -37,23 +38,29 @@ def classify_spotify_genres(genres_list):
 
 def render():
     st.title("🎛️ Real Time Audio Analyzer & Player")
-    st.markdown("Sistem sesini analiz eder ve **ML + Hibrit Veritabanı** ile dinamik EQ uygular.")
+    st.markdown("Sistem sesini modüler olarak analiz eder, Spotify ile senkronize çalışır ve **ML + Apple iTunes Hibrit Zekası** ile dinamik EQ uygular.")
 
     state = get_cached_audio_state()
     
-    if "current_track_id" not in st.session_state:
-        st.session_state.current_track_id = None
-        st.session_state.spotify_macro_genre = None
-        st.session_state.raw_genres_debug = "Bekleniyor..."
-        
     if "eq_active" not in st.session_state:
         st.session_state.eq_active = False
     if "features" not in st.session_state:
+        st.session_state.features = default_features()
+    if "last_eq_state" not in st.session_state:
+        st.session_state.last_eq_state = {freq: 0.0 for freq in librosa_engine.FREQUENCIES}
         st.session_state.features = default_features()
     if "last_spotify_time" not in st.session_state:
         st.session_state.last_spotify_time = 0
         st.session_state.spotify_data = None
         st.session_state.base_progress_ms = 0
+    if "spotify_audio_features" not in st.session_state:  
+        st.session_state.spotify_audio_features = None
+    if "last_track_id" not in st.session_state:           
+        st.session_state.last_track_id = None
+    if "spotify_macro_genre" not in st.session_state:
+        st.session_state.spotify_macro_genre = None
+    if "raw_genres_debug" not in st.session_state:
+        st.session_state.raw_genres_debug = "Bekleniyor..."
 
     col1, col2 = st.columns(2)
     with col1:
@@ -89,34 +96,31 @@ def render():
                 st.session_state.spotify_data = playback
                 if playback and playback.get('is_playing'):
                     st.session_state.base_progress_ms = playback['progress_ms']
-                st.session_state.last_spotify_time = current_time
-            else:
-                playback = st.session_state.spotify_data
+                    
+                    # ── ŞARKI DEĞİŞTİĞİNDE YAPILACAKLAR (Takım Kodları + Bizim Apple Kodları) ──
+                    track_id = playback['item']['id']
+                    if track_id != st.session_state.last_track_id:
+                        
+                        # 1. Takım Arkadaşının Spotify Audio Features Kodu
+                        try:
+                            audio_features = sp.audio_features(track_id)[0]
+                            if audio_features:
+                                st.session_state.spotify_audio_features = audio_features
+                        except Exception:
+                            st.session_state.spotify_audio_features = None
 
-            if playback is not None and playback.get('is_playing'):
-                item = playback['item']
-                duration_ms = item['duration_ms']
-                track_id = item['id']
-                
-                if st.session_state.current_track_id != track_id:
-                    try:
-                        if 'sp' not in locals():
-                            scope = "user-read-currently-playing user-read-playback-state"
-                            sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope))
-                            
-                        artist_id = item['artists'][0].get('id')
-                        artist_name = item['artists'][0].get('name')
+                        # 2. BİZİM APPLE iTUNES KURTARICIMIZ
+                        artist_id = playback['item']['artists'][0].get('id')
+                        artist_name = playback['item']['artists'][0].get('name')
                         
                         raw_genres = []
                         debug_log = f"İsim: '{artist_name}'"
                         
-                        # 1. ADIM: Spotify'a sor
                         if artist_id:
                             artist_info = sp.artist(artist_id)
                             raw_genres = artist_info.get('genres', [])
                             debug_log += f" | Spotify: {raw_genres}"
                         
-                        # 2. ADIM (ÇÖZÜM): Spotify vermezse Apple/iTunes veritabanından SÖKE SÖKE AL!
                         if not raw_genres and artist_name:
                             try:
                                 clean_name = artist_name.split("-")[0].split("(")[0].strip()
@@ -126,18 +130,26 @@ def render():
                                 if response['resultCount'] > 0:
                                     apple_genre = response['results'][0].get('primaryGenreName', '')
                                     raw_genres = [apple_genre.lower()]
-                                    debug_log += f" | Apple/iTunes Kurtardı: {raw_genres}"
+                                    debug_log += f" | Apple Kurtardı: {raw_genres}"
                                 else:
                                     debug_log += " | Apple da bulamadı."
                             except Exception as e:
-                                debug_log += f" | Apple Bağlantı Hatası."
+                                debug_log += " | Apple Bağlantı Hatası."
                         
                         st.session_state.raw_genres_debug = debug_log
                         st.session_state.spotify_macro_genre = classify_spotify_genres(raw_genres)
                         
-                        st.session_state.current_track_id = track_id
-                    except Exception as inner_e:
-                        st.session_state.raw_genres_debug = f"API Hatası: {inner_e}"
+                        # Güncellemeyi tamamla
+                        st.session_state.last_track_id = track_id
+                    # ────────────────────────────────────────────────
+                    
+                st.session_state.last_spotify_time = current_time
+            else:
+                playback = st.session_state.spotify_data
+
+            if playback is not None and playback.get('is_playing'):
+                item = playback['item']
+                duration_ms = item['duration_ms']
                 
                 calculated_progress = st.session_state.base_progress_ms + int(time_since_fetch * 1000)
                 progress_ms = min(calculated_progress, duration_ms)
@@ -148,7 +160,6 @@ def render():
                 with info_col:
                     st.subheader(item['name'])
                     st.caption(f"🎤 **Sanatçı:** {item['artists'][0]['name']}")
-                    
                     st.progress(min(progress_ms / duration_ms, 1.0))
                     time_col1, time_col2 = st.columns(2)
                     time_col1.caption(f"▶ Çalınan: {format_time(progress_ms)}")
@@ -164,24 +175,55 @@ def render():
             pass 
         f = st.session_state.features
 
-        features_for_ml = {
-            "energy": min(f['energy_rms'] * 5, 1.0),
-            "acousticness": max(1.0 - (f['energy_rms'] * 5), 0.0), 
-            "tempo": f['tempo'],
-            "valence": 0.5, 
-            "danceability": f['danceability'],
-            "instrumentalness": 0.8 if f['zcr'] < 0.05 else 0.1, 
-            "loudness": f['loudness_a'],
-            "speechiness": 0.5 if f['zcr'] > 0.1 else 0.05 
-        }
+        # ── TAKIM ARKADAŞININ YENİ HİBRİT ÖZELLİK GİRDİSİ ──
+        spotify_af = st.session_state.spotify_audio_features
+        if spotify_af:
+            features_for_ml = {
+                "valence":          spotify_af["valence"],
+                "acousticness":     spotify_af["acousticness"],
+                "speechiness":      spotify_af["speechiness"],
+                "instrumentalness": spotify_af["instrumentalness"],
+                "energy":       min(f['energy_rms'] * 5, 1.0),
+                "tempo":        f['tempo'] if f['tempo'] > 0 else spotify_af["tempo"],
+                "danceability": f['danceability'] if f['danceability'] > 0 else spotify_af["danceability"],
+                "loudness":     f['loudness_a'],
+                "liveness":     spotify_af.get("liveness", 0.1) # Yeni eklendi
+            }
+        else:
+            features_for_ml = {
+                "energy":           min(f['energy_rms'] * 5, 1.0),
+                "acousticness":     max(1.0 - (f['energy_rms'] * 5), 0.0),
+                "tempo":            f['tempo'],
+                "valence":          0.5,
+                "danceability":     f['danceability'],
+                "instrumentalness": 0.8 if f['zcr'] < 0.05 else 0.1,
+                "loudness":         f['loudness_a'],
+                "speechiness":      0.5 if f['zcr'] > 0.1 else 0.05,
+                "liveness":         0.1
+            }
         
         try:
+            # ── BİZİM KOPYA KAĞIDIMIZI ML MOTORUNA GÖNDERİYORUZ ──
             result = eq_hesapla(features_for_ml, st.session_state.spotify_macro_genre)
             
-            st.success(f"🤖 ML: **{result['ml_prediction']}** | 🎧 Veritabanı: **{st.session_state.spotify_macro_genre or 'Belirsiz'}** | 🎛️ Uygulanan: **{result['genre']}**")
+            st.success(f"🤖 ML: **{result['ml_prediction']}** | 🎧 Veritabanı (Apple/Spotify): **{st.session_state.spotify_macro_genre or 'Belirsiz'}** | 🎛️ Uygulanan: **{result['genre']}**")
             st.caption(f"🔍 *Sistem Log:* `{st.session_state.raw_genres_debug}`")
+
+            base_eq_bands = result["bands"]
+            anlik_ses = {
+                "rms":      f.get("energy_rms", 0.0),
+                "zcr":      f.get("zcr", 0.0),
+                "centroid": f.get("spectral_centroid", 0.0),
+                "flux":     f.get("spectral_flux", 0.0)
+            }
             
-            update_apo_config(result["bands"])
+            hedef_eq = librosa_engine.apply_librosa_tweaks(base_eq_bands, anlik_ses)
+            smoothed_eq = librosa_engine.apply_smoothing(st.session_state.last_eq_state, hedef_eq)
+            st.session_state.last_eq_state = smoothed_eq.copy()
+            
+            preamp_val = librosa_engine.calculate_preamp(smoothed_eq)
+            update_apo_config(smoothed_eq, preamp_val)
+
         except Exception as e:
             st.error(f"ML Motoru Hatası: {e}")
 
@@ -191,6 +233,14 @@ def render():
             m2.metric("RMS Energy", f"{f['energy_rms']:.5f}")
             m3.metric("A-Weighted Loudness", f"{f['loudness_a']:.2f} dB")
             m4.metric("Danceability", f"{f['danceability']:.3f}")
+
+            if spotify_af:
+                st.subheader("🎵 Spotify Audio Features (ML Girdileri)")
+                s1, s2, s3, s4 = st.columns(4)
+                s1.metric("Valence", f"{spotify_af['valence']:.2f}")
+                s2.metric("Acousticness", f"{spotify_af['acousticness']:.2f}")
+                s3.metric("Speechiness", f"{spotify_af['speechiness']:.2f}")
+                s4.metric("Instrumentalness", f"{spotify_af['instrumentalness']:.2f}")
 
             st.subheader("Bant Güç Dağılımı")
             band_df = pd.DataFrame({
@@ -202,12 +252,10 @@ def render():
             st.subheader("MFCC (Mel-Frequency Cepstral Coefficients)")
             mfcc_keys = [f"mfcc_{i+1}" for i in range(20)]
             mfcc_values = [f.get(key, 0.0) for key in mfcc_keys]
-            
             mfcc_df = pd.DataFrame({
                 "Coefficient": [f"C{i+1}" for i in range(20)],
                 "Value": mfcc_values,
             }).set_index("Coefficient")
-            
             st.bar_chart(mfcc_df, use_container_width=True, height=200)
 
         time.sleep(CHUNK_SECONDS)

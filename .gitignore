@@ -5,6 +5,7 @@
 # Sanal Ortam
 venv/
 env/
+.venv
 
 # Python Önbellek Dosyaları
 __pycache__/
@@ -15,5 +16,6 @@ __pycache__/
 Thumbs.db
 core/model.pkl
 # Veri setleri
-data/
+DataSets/
 *.csv
+.cache

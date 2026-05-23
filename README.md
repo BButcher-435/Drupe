@@ -1,66 +1,49 @@
-# 🎧 EQUAI - Akıllı Equalizer
+# 🎧 EquAI - Akıllı Ses Motoru ve Dinamik Equalizer (Real-Time DSP & ML)
 
-![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+![Python](https://img.shields.io/badge/python-3.11-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit&logoColor=white)
-![Spotify](https://img.shields.io/badge/Spotify-1ED760?style=for-the-badge&logo=spotify&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-%23F7931E.svg?style=for-the-badge&logo=scikit-learn&logoColor=white)
-![Pandas](https://img.shields.io/badge/pandas-%23150458.svg?style=for-the-badge&logo=pandas&logoColor=white)
+![SQLite](https://img.shields.io/badge/sqlite-%2307405e.svg?style=for-the-badge&logo=sqlite&logoColor=white)
 
-EQUAI, dinlediğiniz Spotify şarkılarını gerçek zamanlı olarak analiz eden ve Windows sisteminizdeki ses çıkışını makine öğrenmesi algoritmalarıyla otomatik olarak optimize eden yenilikçi bir Python projesidir.
+**EquAI**, bilgisayarınızda çalan sistem sesini (Spotify, YouTube, Oyunlar vb.) "Loopback" yöntemiyle anlık olarak dinleyen, Librosa ile sesin 20'den fazla dijital özelliğini (MFCC, RMS, ZCR, Centroid) çıkartan ve Makine Öğrenmesi (Random Forest) kullanarak Equalizer APO üzerinden **gerçek zamanlı (Real-Time) EQ optimizasyonu** yapan gelişmiş bir Python uygulamasıdır.
 
----
-
-##  Özellikler
-
-* **Gerçek Zamanlı EQ (Real Time EQ):** Spotify'da çalan şarkıyı anlık olarak tespit eder, şarkının türünü makine öğrenmesi (Random Forest) ile tahmin eder ve Equalizer APO üzerinden sistem sesini dinamik olarak ayarlar.
-* **Akıllı Playlist (Smart Playlist) (Yapım Aşamasında):** Şarkıların enerjisi ve BPM'ine göre yumuşak geçişler sağlayacak şekilde Spotify çalma listelerini vektörel uzaklık hesaplamaları (K-Means/TSP) kullanarak yeniden sıralar.
-* **Modüler Mimari:** Geliştirilebilir, katmanlı proje yapısı.
+Sadece yapay zekaya bağlı kalmaz; içerdiği **SQLite destekli Manuel EQ motoru** sayesinde kendi ses profillerinizi oluşturmanıza, Apple Music/Spotify tarzı bir arayüzle frekanslara müdahale etmenize ve favori ayarlarınızı kaydetmenize olanak tanır.
 
 ---
 
-##  Proje Mimarisi
+## 🚀 Öne Çıkan Özellikler
 
-Sistem 4 temel katmandan oluşmaktadır:
-1.  **Kullanıcı Arayüzü:** Streamlit ile tasarlanmış hızlı ve interaktif web UI.
-2.  **API & Yetkilendirme:** Spotipy kütüphanesi üzerinden güvenli OAuth2 entegrasyonu.
-3.  **Veri İşleme & ML Motoru:** Şarkı verilerini işleyen, tür tahmini yapan ve ISO standartlarında 15 bantlık dB değerleri üreten Scikit-Learn pipeline'ı.
-4.  **Yerel Donanım & Dışa Aktarım:** Hesaplanmış ayarları Windows `Equalizer APO` dizinine anında uygulayan modül.
+* 🧠 **Yapay Zeka Destekli Otomatik EQ:** Sistem sesini her saniye analiz eder, çalan müziğin türünü tahmin eder ve seste patlamayı önleyen (Preamp) yumuşak geçişli (Smoothing) bir ISO standart EQ profili uygular.
+* 🎛️ **Gelişmiş Manuel Kontrol (SQLite):** 15 bantlık dikey slider mimarisiyle sese manuel müdahale edin. Hazır profilleri (Rock, Pop, Jazz vb.) kullanın veya kendi ayarlarınızı veritabanına kaydedin.
+* 🎧 **Evrensel Ses Yakalama:** `soundcard` kütüphanesi sayesinde sanal kablolara ihtiyaç duymadan Bluetooth kulaklıklar (örn: Marshall Major V) dahil tüm ses çıkışlarını kayıpsız yakalar.
+* 🛡️ **Güvenli APO Entegrasyonu:** Windows Yönetici (Admin) izinlerine takılmamak için ayarları direkt kendi proje dizinindeki `dynamic_eq.txt` dosyasına yazar.
+* 📊 **Canlı DSP Metrikleri:** Streamlit arayüzü üzerinden müziğin temposunu (BPM), A-Weighted Loudness, Danceability ve anlık spektral güç dağılımını canlı grafiklerle izleyin.
 
 ---
 
-##  Kurulum ve Çalıştırma
+## 🏗️ Proje Mimarisi
 
-### Ön Koşullar
-* Python 3.8 veya üzeri
-* [Equalizer APO](https://sourceforge.net/projects/equalizerapo/) (Windows için ses motoru)
-* Spotify Geliştirici Hesabı (API Anahtarları için)
+EquAI, modülerliği ve sürdürülebilirliği sağlamak için katmanlı bir mimari kullanır:
+* **`/core` (Çekirdek Motorlar):**
+  * `audio_processor.py`: Projenin "Kulağı". C-Level DLL bağlantılarıyla sistem sesini dinler ve özellikleri çıkarır.
+  * `ml_engine.py` & `librosa_engine.py`: Projenin "Beyni". Makine öğrenmesi tahminlerini yapar ve DSP matematiğini (Q-Factor, Smoothing) hesaplar.
+  * `db_manager.py`: SQLite veritabanı yöneticisi.
+  * `eq_controller.py`: Projenin "Eli". Hesaplanmış verileri APO konfigürasyonuna yazar.
+* **`/views` (Arayüzler):** Streamlit modülleri (Real-Time EQ, Manuel EQ, Smart Playlist).
 
-### Kurulum Adımları
+---
 
-**1. Projeyi Klonlayın:**
+## 🛠️ Kurulum ve Çalıştırma
+
+### ⚠️ Ön Koşullar (Zorunlu)
+1. **Python 3.11** (Windows DLL uyumluluğu nedeniyle 3.12 veya 3.13 önerilmez).
+2. [Equalizer APO](https://sourceforge.net/projects/equalizerapo/) Windows sisteminizde kurulu olmalıdır.
+
+### Adım 1: Projeyi Klonlama ve Ortam Kurulumu
 ```bash
 git clone [https://github.com/BButcher-435/Drupe.git](https://github.com/BButcher-435/Drupe.git)
 cd Drupe
-```
-**2. Sanal Ortam Oluşturun ve Bağımlılıkları Yükleyin:
-
-```Bash
-python -m venv venv
-# Windows için:
+python -3.11 -m venv venv
 .\venv\Scripts\activate
-# Mac/Linux için:
-source venv/bin/activate
-
 pip install -r requirements.txt
-```
-3. Çevre Değişkenlerini Ayarlayın:
-Proje ana dizininde bir .env dosyası oluşturun ve Spotify Developer Dashboard'dan aldığınız bilgileri girin:
-```
-SPOTIPY_CLIENT_ID='senin_client_id_kodun'
-SPOTIPY_CLIENT_SECRET='senin_client_secret_kodun'
-SPOTIPY_REDIRECT_URI='http://localhost:8501'
-```
-4. Uygulamayı Başlatın:
-
-```Bash
 streamlit run app.py
