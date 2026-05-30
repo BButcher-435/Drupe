@@ -32,4 +32,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-print("👉 EKRAN ÇIKTISI (CLIENT ID):", os.getenv("SPOTIPY_CLIENT_ID"))

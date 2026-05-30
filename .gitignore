@@ -14,8 +14,18 @@ __pycache__/
 # Mac/Windows Sistem Dosyaları
 .DS_Store
 Thumbs.db
+
+# Model dosyaları
 core/model.pkl
+core/scaler.pkl
+core/label_encoder.pkl
+
 # Veri setleri
 DataSets/
 *.csv
+
+# Spotify token cache
 .cache
+
+# Test ve veritabanı
+presets.db

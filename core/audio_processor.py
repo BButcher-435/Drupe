@@ -73,6 +73,12 @@ def extract_features(y: np.ndarray, ema_store: dict) -> dict:
     if float(np.max(np.abs(y))) < 1e-5:
         return {k: ema_store.get(k, 0.0) for k in KEYS}
 
+    y_trimmed, _ = librosa.effects.trim(y, top_db=30)
+    if len(y_trimmed) < 1024:
+        y_trimmed = y
+    y = y_trimmed
+    if np.max(np.abs(y)) > 0:
+        y = y / np.max(np.abs(y))
     D = librosa.stft(y, n_fft=N_FFT, hop_length=HOP_LENGTH)
     S_power = np.abs(D) ** 2
     freqs = librosa.fft_frequencies(sr=SAMPLE_RATE, n_fft=N_FFT)
@@ -102,7 +108,7 @@ def extract_features(y: np.ndarray, ema_store: dict) -> dict:
     spectral_centroid = _ema(ema_store, "spectral_centroid", float(np.mean(librosa.feature.spectral_centroid(S=np.abs(D), sr=SAMPLE_RATE, n_fft=N_FFT))))
     spectral_rolloff = _ema(ema_store, "spectral_rolloff", float(np.mean(librosa.feature.spectral_rolloff(S=np.abs(D), sr=SAMPLE_RATE, n_fft=N_FFT, roll_percent=0.85))))
 
-    mfcc_mean = np.mean(librosa.feature.mfcc(S=librosa.power_to_db(S_power), sr=SAMPLE_RATE, n_mfcc=20), axis=1)
+    mfcc_mean = np.mean(librosa.feature.mfcc(S=librosa.power_to_db(S_power, ref=np.max), sr=SAMPLE_RATE, n_mfcc=20), axis=1)
     mfcc_dict = {f"mfcc_{i+1}": _ema(ema_store, f"mfcc_{i+1}", float(val)) for i, val in enumerate(mfcc_mean)}
 
     total_pwr = float(S_power.mean()) + 1e-10

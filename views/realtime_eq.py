@@ -5,7 +5,7 @@ import time
 import threading
 import queue
 import pandas as pd
-import requests # BİZİM KURTARICIMIZ
+import requests
 
 from core.audio_processor import get_audio_state, audio_worker, default_features, BANDS, CHUNK_SECONDS
 from core.eq_controller import update_apo_config
@@ -21,27 +21,25 @@ def format_time(ms):
     minutes = int((ms / (1000 * 60)) % 60)
     return f"{minutes}:{seconds:02d}"
 
-# --- BİZİM ÇEVİRİCİ SÖZLÜĞÜMÜZ ---
 def classify_spotify_genres(genres_list):
     if not genres_list:
         return None
     genres_str = " ".join(genres_list).lower()
-    
-    if any(keyword in genres_str for keyword in ["metal", "rock", "grunge", "punk", "anatolian"]): return "Rock"
-    elif any(keyword in genres_str for keyword in ["hip hop", "rap", "trap", "drill"]): return "Hip-Hop"
-    elif any(keyword in genres_str for keyword in ["pop", "dance", "r&b", "soul"]): return "Pop"
-    elif any(keyword in genres_str for keyword in ["edm", "techno", "house", "electro", "dubstep"]): return "Electronic"
-    elif any(keyword in genres_str for keyword in ["jazz", "blues"]): return "Jazz"
-    elif any(keyword in genres_str for keyword in ["classical", "orchestra", "piano"]): return "Classical"
-    elif any(keyword in genres_str for keyword in ["folk", "country", "acoustic", "indie"]): return "Folk"
+    if any(k in genres_str for k in ["metal", "rock", "grunge", "punk", "anatolian"]): return "Rock"
+    elif any(k in genres_str for k in ["hip hop", "rap", "trap", "drill"]): return "Hip-Hop"
+    elif any(k in genres_str for k in ["pop", "dance", "r&b", "soul"]): return "Pop"
+    elif any(k in genres_str for k in ["edm", "techno", "house", "electro", "dubstep"]): return "Electronic"
+    elif any(k in genres_str for k in ["jazz", "blues"]): return "Jazz"
+    elif any(k in genres_str for k in ["classical", "orchestra", "piano"]): return "Classical"
+    elif any(k in genres_str for k in ["folk", "country", "acoustic", "indie"]): return "Folk"
     return None
 
 def render():
     st.title("🎛️ Real Time Audio Analyzer & Player")
-    st.markdown("Sistem sesini modüler olarak analiz eder, Spotify ile senkronize çalışır ve **ML + Apple iTunes Hibrit Zekası** ile dinamik EQ uygular.")
+    st.markdown("Sistem sesini analiz eder, Spotify ile senkronize çalışır ve ML tabanlı dinamik EQ uygular.")
 
     state = get_cached_audio_state()
-    
+
     if "eq_active" not in st.session_state:
         st.session_state.eq_active = False
     if "features" not in st.session_state:
@@ -53,14 +51,23 @@ def render():
         st.session_state.last_spotify_time = 0
         st.session_state.spotify_data = None
         st.session_state.base_progress_ms = 0
-    if "spotify_audio_features" not in st.session_state:  
+    if "spotify_audio_features" not in st.session_state:
         st.session_state.spotify_audio_features = None
-    if "last_track_id" not in st.session_state:           
+    if "last_track_id" not in st.session_state:
         st.session_state.last_track_id = None
     if "spotify_macro_genre" not in st.session_state:
         st.session_state.spotify_macro_genre = None
     if "raw_genres_debug" not in st.session_state:
         st.session_state.raw_genres_debug = "Bekleniyor..."
+    if "locked_genre" not in st.session_state:
+        st.session_state.locked_genre = None
+    if "locked_ml_prediction" not in st.session_state:
+        st.session_state.locked_ml_prediction = None
+    # ── Şarkı karakteri için veri biriktirme ──
+    if "feature_buffer" not in st.session_state:
+        st.session_state.feature_buffer = []
+    if "collect_start_time" not in st.session_state:
+        st.session_state.collect_start_time = None
 
     col1, col2 = st.columns(2)
     with col1:
@@ -90,18 +97,17 @@ def render():
         try:
             if time_since_fetch >= 3.5:
                 scope = "user-read-currently-playing user-read-playback-state"
-                sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope))
+                sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope, open_browser=True))
                 playback = sp.current_playback()
-                
+
                 st.session_state.spotify_data = playback
                 if playback and playback.get('is_playing'):
                     st.session_state.base_progress_ms = playback['progress_ms']
-                    
-                    # ── ŞARKI DEĞİŞTİĞİNDE YAPILACAKLAR (Takım Kodları + Bizim Apple Kodları) ──
+
                     track_id = playback['item']['id']
                     if track_id != st.session_state.last_track_id:
-                        
-                        # 1. Takım Arkadaşının Spotify Audio Features Kodu
+
+                        # Spotify audio features (genelde boş gelir, sorun değil)
                         try:
                             audio_features = sp.audio_features(track_id)[0]
                             if audio_features:
@@ -109,40 +115,42 @@ def render():
                         except Exception:
                             st.session_state.spotify_audio_features = None
 
-                        # 2. BİZİM APPLE iTUNES KURTARICIMIZ
+                        # Apple iTunes tür kurtarıcı
                         artist_id = playback['item']['artists'][0].get('id')
                         artist_name = playback['item']['artists'][0].get('name')
-                        
                         raw_genres = []
                         debug_log = f"İsim: '{artist_name}'"
-                        
+
                         if artist_id:
                             artist_info = sp.artist(artist_id)
                             raw_genres = artist_info.get('genres', [])
                             debug_log += f" | Spotify: {raw_genres}"
-                        
+
                         if not raw_genres and artist_name:
                             try:
                                 clean_name = artist_name.split("-")[0].split("(")[0].strip()
                                 itunes_url = f"https://itunes.apple.com/search?term={clean_name}&entity=musicArtist&limit=1"
                                 response = requests.get(itunes_url, timeout=3).json()
-                                
                                 if response['resultCount'] > 0:
                                     apple_genre = response['results'][0].get('primaryGenreName', '')
                                     raw_genres = [apple_genre.lower()]
-                                    debug_log += f" | Apple Kurtardı: {raw_genres}"
+                                    debug_log += f" | Apple: {raw_genres}"
                                 else:
                                     debug_log += " | Apple da bulamadı."
-                            except Exception as e:
+                            except Exception:
                                 debug_log += " | Apple Bağlantı Hatası."
-                        
+
                         st.session_state.raw_genres_debug = debug_log
                         st.session_state.spotify_macro_genre = classify_spotify_genres(raw_genres)
-                        
-                        # Güncellemeyi tamamla
+
+                        # Yeni şarkı → kilidi ve buffer'ı sıfırla
+                        st.session_state.locked_genre = None
+                        st.session_state.locked_ml_prediction = None
+                        st.session_state.collect_start_time = None
+                        st.session_state.feature_buffer = []
+
                         st.session_state.last_track_id = track_id
-                    # ────────────────────────────────────────────────
-                    
+
                 st.session_state.last_spotify_time = current_time
             else:
                 playback = st.session_state.spotify_data
@@ -150,10 +158,9 @@ def render():
             if playback is not None and playback.get('is_playing'):
                 item = playback['item']
                 duration_ms = item['duration_ms']
-                
                 calculated_progress = st.session_state.base_progress_ms + int(time_since_fetch * 1000)
                 progress_ms = min(calculated_progress, duration_ms)
-                
+
                 img_col, info_col = st.columns([1, 2])
                 with img_col:
                     st.image(item['album']['images'][0]['url'], use_column_width=True)
@@ -165,62 +172,81 @@ def render():
                     time_col1.caption(f"▶ Çalınan: {format_time(progress_ms)}")
                     time_col2.caption(f"⏳ Kalan: {format_time(duration_ms - progress_ms)}")
             else:
-                st.info("Şu an Spotify'da müzik çalmıyor (Ancak sistem sesi dinleniyor).")
+                st.info("Şu an Spotify'da müzik çalmıyor (Sistem sesi dinleniyor).")
         except Exception:
-            st.warning("Spotify bilgileri şu an çekilemiyor, ancak ses analizi devam ediyor...")
+            st.warning("Spotify bilgileri çekilemiyor, ses analizi devam ediyor...")
 
         try:
             st.session_state.features = state["result_queue"].get_nowait()
         except queue.Empty:
-            pass 
+            pass
         f = st.session_state.features
 
-        # ── TAKIM ARKADAŞININ YENİ HİBRİT ÖZELLİK GİRDİSİ ──
-        spotify_af = st.session_state.spotify_audio_features
-        if spotify_af:
-            features_for_ml = {
-                "valence":          spotify_af["valence"],
-                "acousticness":     spotify_af["acousticness"],
-                "speechiness":      spotify_af["speechiness"],
-                "instrumentalness": spotify_af["instrumentalness"],
-                "energy":       min(f['energy_rms'] * 5, 1.0),
-                "tempo":        f['tempo'] if f['tempo'] > 0 else spotify_af["tempo"],
-                "danceability": f['danceability'] if f['danceability'] > 0 else spotify_af["danceability"],
-                "loudness":     f['loudness_a'],
-                "liveness":     spotify_af.get("liveness", 0.1) # Yeni eklendi
-            }
-        else:
-            features_for_ml = {
-                "energy":           min(f['energy_rms'] * 5, 1.0),
-                "acousticness":     max(1.0 - (f['energy_rms'] * 5), 0.0),
-                "tempo":            f['tempo'],
-                "valence":          0.5,
-                "danceability":     f['danceability'],
-                "instrumentalness": 0.8 if f['zcr'] < 0.05 else 0.1,
-                "loudness":         f['loudness_a'],
-                "speechiness":      0.5 if f['zcr'] > 0.1 else 0.05,
-                "liveness":         0.1
-            }
-        
         try:
-            # ── BİZİM KOPYA KAĞIDIMIZI ML MOTORUNA GÖNDERİYORUZ ──
-            result = eq_hesapla(features_for_ml, st.session_state.spotify_macro_genre)
-            
-            st.success(f"🤖 ML: **{result['ml_prediction']}** | 🎧 Veritabanı (Apple/Spotify): **{st.session_state.spotify_macro_genre or 'Belirsiz'}** | 🎛️ Uygulanan: **{result['genre']}**")
-            st.caption(f"🔍 *Sistem Log:* `{st.session_state.raw_genres_debug}`")
+            # ── ŞARKININ KARAKTERİNE GÖRE TEK TAHMİN ──
+            COLLECT_SECONDS = 12
 
-            base_eq_bands = result["bands"]
+            if st.session_state.locked_genre is None:
+                if st.session_state.collect_start_time is None:
+                    st.session_state.collect_start_time = time.time()
+                    st.session_state.feature_buffer = []
+
+                # Anlamlı ses varsa ham MFCC sözlüğünü biriktir
+                if f['energy_rms'] > 0.005:
+                    st.session_state.feature_buffer.append(f.copy())
+
+                elapsed = time.time() - st.session_state.collect_start_time
+
+                if elapsed >= COLLECT_SECONDS and len(st.session_state.feature_buffer) >= 5:
+                    # Biriken MFCC'lerin ortalamasını al
+                    avg_features = {}
+                    keys = st.session_state.feature_buffer[0].keys()
+                    for key in keys:
+                        try:
+                            vals = [b[key] for b in st.session_state.feature_buffer]
+                            avg_features[key] = sum(vals) / len(vals)
+                        except (TypeError, KeyError):
+                            avg_features[key] = st.session_state.feature_buffer[0][key]
+
+                    result = eq_hesapla(avg_features, st.session_state.spotify_macro_genre)
+                    st.session_state.locked_genre = result["genre"]
+                    st.session_state.locked_ml_prediction = result["ml_prediction"]
+                    base_eq_bands = result["bands"]
+                else:
+                    result = eq_hesapla(f, st.session_state.spotify_macro_genre)
+                    base_eq_bands = result["bands"]
+            else:
+                result = eq_hesapla(f, st.session_state.locked_genre)
+                base_eq_bands = result["bands"]
+
+            # Ekran
+            if st.session_state.locked_genre is None:
+                st.info("🎧 Şarkı analiz ediliyor...")
+            else:
+                if st.session_state.spotify_macro_genre:
+                
+                    st.success(
+                        f"🎧 Tür (Apple/Spotify): **{st.session_state.locked_genre}** | "
+                        f"🎛️ Uygulanan EQ: **{st.session_state.locked_genre}**"
+                    )
+                else:
+                    
+                    st.success(
+                        f"🤖 Tür (ML Tahmini): **{st.session_state.locked_genre}** | "
+                        f"🎛️ Uygulanan EQ: **{st.session_state.locked_genre}**"
+                    )
+            st.caption(f"🔍 *Log:* `{st.session_state.raw_genres_debug}`")
+           
             anlik_ses = {
                 "rms":      f.get("energy_rms", 0.0),
                 "zcr":      f.get("zcr", 0.0),
                 "centroid": f.get("spectral_centroid", 0.0),
                 "flux":     f.get("spectral_flux", 0.0)
             }
-            
             hedef_eq = librosa_engine.apply_librosa_tweaks(base_eq_bands, anlik_ses)
             smoothed_eq = librosa_engine.apply_smoothing(st.session_state.last_eq_state, hedef_eq)
             st.session_state.last_eq_state = smoothed_eq.copy()
-            
+
             preamp_val = librosa_engine.calculate_preamp(smoothed_eq)
             update_apo_config(smoothed_eq, preamp_val)
 
@@ -233,14 +259,6 @@ def render():
             m2.metric("RMS Energy", f"{f['energy_rms']:.5f}")
             m3.metric("A-Weighted Loudness", f"{f['loudness_a']:.2f} dB")
             m4.metric("Danceability", f"{f['danceability']:.3f}")
-
-            if spotify_af:
-                st.subheader("🎵 Spotify Audio Features (ML Girdileri)")
-                s1, s2, s3, s4 = st.columns(4)
-                s1.metric("Valence", f"{spotify_af['valence']:.2f}")
-                s2.metric("Acousticness", f"{spotify_af['acousticness']:.2f}")
-                s3.metric("Speechiness", f"{spotify_af['speechiness']:.2f}")
-                s4.metric("Instrumentalness", f"{spotify_af['instrumentalness']:.2f}")
 
             st.subheader("Bant Güç Dağılımı")
             band_df = pd.DataFrame({
