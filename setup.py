@@ -20,15 +20,16 @@ setup(
     ],
     python_requires="==3.11.*",
     install_requires=[
-        "streamlit==1.32.0"
-        "spotipy==2.23.0"
-"pandas==2.2.1"
-"scikit-learn==1.4.1.post1"
-"python-dotenv==1.0.1"
-"librosa>=0.10.1"
-"soundcard>=0.4.2"
-"pywin32>=306"
-"sounddevice>=0.4.6"
-"requests>=2.31.0"
+        "streamlit==1.32.0",
+        "spotipy==2.23.0",
+        "pandas==2.2.1",
+        "scikit-learn==1.4.1.post1",
+        "python-dotenv==1.0.1",
+        "librosa>=0.10.1",
+        "soundcard>=0.4.2",
+        "pywin32>=306",
+        "sounddevice>=0.4.6",
+        "requests>=2.31.0"
+        
     ],
 )

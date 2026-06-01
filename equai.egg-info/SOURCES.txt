@@ -1,0 +1,8 @@
+LICENSE
+README.md
+setup.py
+equai.egg-info/PKG-INFO
+equai.egg-info/SOURCES.txt
+equai.egg-info/dependency_links.txt
+equai.egg-info/requires.txt
+equai.egg-info/top_level.txt
