@@ -4,7 +4,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit&logoColor=white)](https://streamlit.io/)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-%23F7931E.svg?style=for-the-badge&logo=scikit-learn&logoColor=white)](https://scikit-learn.org/)
 [![SQLite](https://img.shields.io/badge/sqlite-%2307405e.svg?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-
+[![PyPI version](https://badge.fury.io/py/equai.svg)](https://pypi.org/project/equai/)
 ## 📖 Overview
 **EquAI** is a cutting-edge, Python-based digital signal processing (DSP) application that actively monitors your system's audio output via Loopback. By extracting over 20 digital audio features (such as MFCC, RMS, ZCR, and Spectral Centroid) in real-time, EquAI leverages a Random Forest Machine Learning model to apply **dynamic EQ optimization** directly through Equalizer APO.
 
