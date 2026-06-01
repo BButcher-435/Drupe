@@ -30,6 +30,9 @@ setup(
         "pywin32>=306",
         "sounddevice>=0.4.6",
         "requests>=2.31.0"
+<<<<<<< HEAD
         
+=======
+>>>>>>> fa82b47a59026fb594049104d8263ad68d44087a
     ],
 )
