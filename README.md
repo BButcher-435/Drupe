@@ -63,5 +63,5 @@ pip install -r requirements.txt
 # 5. Launch the application
 streamlit run app.py
 
-## Contributing
+### Contributing
 Contributions are always welcome! Feel free to open an issue or submit a pull request if you have ideas to improve the DSP pipeline, UI, or ML models
